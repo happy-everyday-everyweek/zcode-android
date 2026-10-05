@@ -1,0 +1,76 @@
+name: Build ZCode APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout zcode-android
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Node 22 + pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.33.2 --activate
+      - run: pnpm --version
+
+      - name: Checkout ZCode source
+        uses: actions/checkout@v4
+        with:
+          repository: zai-org/ZCode
+          path: ZCode
+
+      - name: Build ZCode linux-arm64 SEA
+        id: zcode
+        run: |
+          cd ZCode
+          pnpm install --frozen-lockfile || pnpm install
+          pnpm --dir apps/zcode-cli exec turbo --skip-infer --cwd apps/zcode-cli run build --filter=!@zcode/cli --force
+          pnpm --dir apps/zcode-cli build
+          node apps/zcode-cli/packages/cli/scripts/build-sea.mjs --target linux-arm64
+          ls -la apps/zcode-cli/packages/cli/dist/
+          cp apps/zcode-cli/packages/cli/dist/zcode-linux-arm64 "$GITHUB_WORKSPACE/app/src/main/assets/zcode-linux-arm64"
+
+      - name: Fallback to Node linux-arm64 (glibc) if ZCode build failed
+        if: steps.zcode.outcome != 'success'
+        run: |
+          echo "ZCode SEA build failed, falling back to Node linux-arm64 binary"
+          mkdir -p app/src/main/assets
+          curl -sL -o /tmp/node.tar.xz https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-arm64.tar.xz
+          tar -xf /tmp/node.tar.xz -C /tmp
+          cp /tmp/node-v22.14.0-linux-arm64/bin/node app/src/main/assets/zcode-linux-arm64
+
+      - name: Verify binary
+        run: |
+          ls -la app/src/main/assets/zcode-linux-arm64
+          file app/src/main/assets/zcode-linux-arm64 || true
+          readelf -d app/src/main/assets/zcode-linux-arm64 2>/dev/null | grep -E 'NEEDED|interpreter' || true
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zcode-android-apk
+          path: app/build/outputs/apk/debug/app-debug.apk

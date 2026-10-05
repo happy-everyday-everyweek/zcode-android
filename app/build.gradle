@@ -1,0 +1,40 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.zcode.android'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.zcode.android"
+        // targetSdk 28: Android 9 之前允许在应用私有目录 (filesDir) 直接 exec 二进制
+        minSdk 21
+        targetSdk 28
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    // 不做 ABI 拆分，二进制按文件放进 assets
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+}
